@@ -1,0 +1,550 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: WhatsApp Real Estate Outreach API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: campaigns
+    description: Campaign management
+  - name: contacts
+    description: Contact management
+  - name: whatsapp
+    description: WhatsApp operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a new campaign with contacts from uploaded data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get campaign with contacts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignDetail"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /campaigns/{id}/send:
+    post:
+      operationId: sendCampaign
+      tags: [campaigns]
+      summary: Start sending WhatsApp messages to all contacts in campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionIds]
+              properties:
+                sessionIds:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [session1, session2, session3]
+                maxContacts:
+                  type: integer
+                  minimum: 1
+      responses:
+        "200":
+          description: Sending started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendResult"
+
+  /campaigns/{id}/export:
+    get:
+      operationId: exportCampaign
+      tags: [campaigns]
+      summary: Export campaign results as JSON (for Excel download)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Export data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportData"
+
+  /campaigns/{id}/stats:
+    get:
+      operationId: getCampaignStats
+      tags: [campaigns]
+      summary: Get campaign statistics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignStats"
+
+  /contacts/{id}:
+    patch:
+      operationId: updateContact
+      tags: [contacts]
+      summary: Update contact status (mark as will_sell/will_buy/not_interested)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactUpdate"
+      responses:
+        "200":
+          description: Updated contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
+  /whatsapp/check-connection:
+    get:
+      operationId: checkWhatsappConnection
+      tags: [whatsapp]
+      summary: Check if WhatsApp Green API is connected
+      responses:
+        "200":
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+
+  /whatsapp/remote-sessions:
+    get:
+      operationId: getRemoteWhatsappSessions
+      tags: [whatsapp]
+      summary: Read measured session and ban telemetry from the remote WhatsApp server
+      responses:
+        "200":
+          description: Remote session health measured from /sessions/health. The percentage is confirmedBanEvents divided by sendAttempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteSessionHealthResult"
+        "502":
+          description: Remote WhatsApp server unavailable
+
+  /gemini/generate-message-variants:
+    post:
+      operationId: generateMessageVariants
+      tags: [whatsapp]
+      summary: Generate reusable WhatsApp message templates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageVariantInput"
+      responses:
+        "200":
+          description: Generated message templates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageVariantResult"
+        "400":
+          description: Invalid input
+        "500":
+          description: Generation failed
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Campaign:
+      type: object
+      required: [id, name, createdAt, status, totalContacts, sentCount, pendingCount, failedCount, willSellCount, willBuyCount, notInterestedCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+        status:
+          type: string
+          enum: [draft, sending, done, partial, failed]
+        totalContacts:
+          type: integer
+        sentCount:
+          type: integer
+        pendingCount:
+          type: integer
+        failedCount:
+          type: integer
+        willSellCount:
+          type: integer
+        willBuyCount:
+          type: integer
+        notInterestedCount:
+          type: integer
+
+    CampaignInput:
+      type: object
+      required: [name, contacts]
+      properties:
+        name:
+          type: string
+        messageTemplate:
+          type: ["string", "null"]
+        messageTemplates:
+          type: array
+          items:
+            type: string
+          description: Approved message variants to rotate during sending
+        useAI:
+          type: boolean
+          description: Generate a personalized message with Gemini when no approved variants are provided
+        minDelaySeconds:
+          type: integer
+          minimum: 60
+        maxDelaySeconds:
+          type: integer
+          minimum: 60
+        pauseEveryMessages:
+          type: integer
+          minimum: 0
+        pauseDurationSeconds:
+          type: integer
+          minimum: 60
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContactInput"
+
+    CampaignDetail:
+      type: object
+      required: [id, name, createdAt, status, totalContacts, sentCount, pendingCount, failedCount, willSellCount, willBuyCount, notInterestedCount, contacts]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+        status:
+          type: string
+          enum: [draft, sending, done, partial, failed]
+        totalContacts:
+          type: integer
+        sentCount:
+          type: integer
+        pendingCount:
+          type: integer
+        failedCount:
+          type: integer
+        willSellCount:
+          type: integer
+        willBuyCount:
+          type: integer
+        notInterestedCount:
+          type: integer
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contact"
+
+    Contact:
+      type: object
+      required: [id, campaignId, name, phone, plotNumber, area, district, neighborhood, status]
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        plotNumber:
+          type: string
+        area:
+          type: string
+        district:
+          type: string
+        neighborhood:
+          type: string
+        sendSessionId:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, sent, failed, will_sell, will_buy, not_interested]
+        sentAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ContactInput:
+      type: object
+      required: [name, phone, plotNumber, area, district, neighborhood]
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        plotNumber:
+          type: string
+        area:
+          type: string
+        district:
+          type: string
+        neighborhood:
+          type: string
+
+    ContactUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, sent, will_sell, will_buy, not_interested]
+        notes:
+          type: ["string", "null"]
+
+    SendResult:
+      type: object
+      required: [queued, message]
+      properties:
+        queued:
+          type: integer
+        message:
+          type: string
+
+    ExportData:
+      type: object
+      required: [campaignName, rows]
+      properties:
+        campaignName:
+          type: string
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportRow"
+
+    ExportRow:
+      type: object
+      required: [name, phone, plotNumber, district, neighborhood, status, sentAt, notes]
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        plotNumber:
+          type: string
+        area:
+          type: string
+        district:
+          type: string
+        neighborhood:
+          type: string
+        status:
+          type: string
+        sentAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    CampaignStats:
+      type: object
+      required: [total, sent, pending, willSell, willBuy, notInterested]
+      properties:
+        total:
+          type: integer
+        sent:
+          type: integer
+        pending:
+          type: integer
+        willSell:
+          type: integer
+        willBuy:
+          type: integer
+        notInterested:
+          type: integer
+
+    ConnectionStatus:
+      type: object
+      required: [connected, stateInstance]
+      properties:
+        connected:
+          type: boolean
+        stateInstance:
+          type: string
+    RemoteSessionHealth:
+      type: object
+      required: [sessionId, status, connected, sendAttempts, confirmedBanEvents, banRatePercent, banSignals, banStatus, banEvidence]
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+        connected:
+          type: boolean
+        sendAttempts:
+          type: integer
+          minimum: 0
+        confirmedBanEvents:
+          type: integer
+          minimum: 0
+        banRatePercent:
+          type: ["number", "null"]
+          minimum: 0
+          maximum: 100
+        banSignals:
+          type: array
+          items:
+            type: string
+        banStatus:
+          type: string
+          enum: [confirmed, not_reported, unknown]
+        banEvidence:
+          type: ["string", "null"]
+    RemoteSessionHealthResult:
+      type: object
+      required: [sessions, totalSendAttempts, totalConfirmedBanEvents, banRatePercent, measurementStatus, measurementReason]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RemoteSessionHealth"
+        totalSendAttempts:
+          type: integer
+          minimum: 0
+        totalConfirmedBanEvents:
+          type: integer
+          minimum: 0
+        banRatePercent:
+          type: ["number", "null"]
+        measurementStatus:
+          type: string
+          enum: [available, unavailable]
+        measurementReason:
+          type: string
+    MessageVariantInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        plotNumber:
+          type: string
+        area:
+          type: string
+        district:
+          type: string
+        neighborhood:
+          type: string
+        count:
+          type: integer
+          minimum: 10
+          maximum: 20
+    MessageVariantResult:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            type: string
